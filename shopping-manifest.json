@@ -1,0 +1,13 @@
+{
+  "name": "Shopping List",
+  "short_name": "Shopping",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1a6b1a",
+  "theme_color": "#1a6b1a",
+  "description": "Simple shopping list with checkoffs",
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
