@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Shopping" />
-  <link rel="manifest" href="manifest.json" />
+  <link rel="manifest" href="shopping-manifest.json" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f0faf0; min-height: 100vh; color: #1a2e1a; }
@@ -64,7 +64,6 @@
       color: #4a7a4a;
     }
     .btn-clear { background: none; border: none; color: #e53935; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
-    .btn-clear:active { background: #ffeaea; }
 
     .list { padding: 0 16px 100px; }
 
@@ -113,22 +112,13 @@
       color: #888;
     }
 
-    .item-qty {
-      font-size: 13px;
-      color: #4a7a4a;
-      background: #f0faf0;
-      border-radius: 6px;
-      padding: 2px 8px;
-      font-weight: 600;
-    }
-
     .btn-delete {
       background: none;
       border: none;
       color: #ccc;
-      font-size: 18px;
+      font-size: 22px;
       cursor: pointer;
-      padding: 2px 4px;
+      padding: 2px 6px;
       line-height: 1;
     }
     .btn-delete:active { color: #e53935; }
@@ -139,21 +129,9 @@
       color: #4a7a4a;
     }
     .empty-icon { font-size: 48px; margin-bottom: 12px; }
-    .empty p { font-size: 15px; }
 
     .progress-bar-wrap { height: 4px; background: #d1f0d1; margin: 0 16px 4px; border-radius: 2px; }
     .progress-bar { height: 4px; background: #1a6b1a; border-radius: 2px; transition: width 0.4s; }
-
-    /* Modal for qty */
-    .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 100; align-items: flex-end; justify-content: center; padding: 0; }
-    .modal-bg.open { display: flex; }
-    .modal { background: white; border-radius: 20px 20px 0 0; padding: 24px; width: 100%; max-width: 500px; }
-    .modal h3 { font-size: 17px; margin-bottom: 16px; }
-    .modal input { width: 100%; padding: 10px 14px; border-radius: 10px; border: 2px solid #d1f0d1; font-size: 16px; font-family: inherit; outline: none; margin-bottom: 14px; }
-    .modal input:focus { border-color: #1a6b1a; }
-    .modal-btns { display: flex; gap: 10px; }
-    .btn-cancel { flex: 1; padding: 12px; border-radius: 10px; border: none; background: #f0faf0; color: #1a2e1a; font-weight: 600; cursor: pointer; font-size: 15px; }
-    .btn-save { flex: 1; padding: 12px; border-radius: 10px; border: none; background: #1a6b1a; color: white; font-weight: 600; cursor: pointer; font-size: 15px; }
 
     .done-banner {
       display: none;
@@ -169,7 +147,23 @@
       font-size: 15px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.2);
       z-index: 50;
+      white-space: nowrap;
     }
+
+    .save-indicator {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: #1a6b1a;
+      color: white;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 200;
+    }
+    .save-indicator.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -196,49 +190,83 @@
 <div class="list" id="list"></div>
 
 <div class="done-banner" id="doneBanner">🎉 All done! Great shop!</div>
-
-<!-- Qty Modal -->
-<div class="modal-bg" id="qtyModal">
-  <div class="modal">
-    <h3 id="modalItemName">Edit item</h3>
-    <input type="text" id="qtyInput" placeholder="Quantity (e.g. 2, 500g, 1 pack)" />
-    <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
-      <button class="btn-save" onclick="saveQty()">Save</button>
-    </div>
-  </div>
-</div>
+<div class="save-indicator" id="saveIndicator">✓ Saved</div>
 
 <script>
-  let items = JSON.parse(localStorage.getItem('sl_items') || '[]');
-  let editId = null;
+  const STORAGE_KEY = 'sl_items_v2';
+  const BACKUP_KEY = 'sl_items_backup';
 
-  function save() { localStorage.setItem('sl_items', JSON.stringify(items)); }
+  // Load items - try main storage first, then backup
+  function loadItems() {
+    try {
+      const main = localStorage.getItem(STORAGE_KEY);
+      if (main) {
+        const parsed = JSON.parse(main);
+        if (Array.isArray(parsed) && parsed.length >= 0) return parsed;
+      }
+    } catch(e) {}
+    try {
+      const backup = localStorage.getItem(BACKUP_KEY);
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch(e) {}
+    return [];
+  }
+
+  let items = loadItems();
+
+  function save() {
+    try {
+      const data = JSON.stringify(items);
+      localStorage.setItem(STORAGE_KEY, data);
+      localStorage.setItem(BACKUP_KEY, data);
+      // Also save to sessionStorage as extra backup
+      sessionStorage.setItem(STORAGE_KEY, data);
+      showSaved();
+    } catch(e) {
+      console.error('Save failed', e);
+    }
+  }
+
+  function showSaved() {
+    const el = document.getElementById('saveIndicator');
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 1200);
+  }
+
+  // Auto-save every 10 seconds as extra protection
+  setInterval(() => { if (items.length > 0) save(); }, 10000);
+
+  // Save when page is about to close/hide
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') save();
+  });
+  window.addEventListener('pagehide', save);
+  window.addEventListener('beforeunload', save);
 
   function render() {
-    const list = document.getElementById('list');
     const total = items.length;
     const checked = items.filter(i => i.checked).length;
 
-    // Stats
     document.getElementById('statsText').textContent = total === 0 ? '0 items' : `${checked} of ${total} found`;
     document.getElementById('headerSub').textContent = total === 0 ? 'Add your items below' : `${total - checked} item${total - checked !== 1 ? 's' : ''} left to find`;
     const pct = total === 0 ? 0 : (checked / total) * 100;
     document.getElementById('progressBar').style.width = pct + '%';
 
-    // Done banner
     const banner = document.getElementById('doneBanner');
     if (total > 0 && checked === total) {
       banner.style.display = 'block';
       setTimeout(() => banner.style.display = 'none', 3000);
     }
 
+    const list = document.getElementById('list');
     if (total === 0) {
       list.innerHTML = `<div class="empty"><div class="empty-icon">🛍️</div><p>Your list is empty.<br>Add something above!</p></div>`;
       return;
     }
 
-    // Unchecked first, then checked
     const sorted = [...items].sort((a, b) => a.checked - b.checked);
     list.innerHTML = sorted.map(item => `
       <div class="item ${item.checked ? 'checked' : ''}" onclick="toggleItem(${item.id})">
@@ -247,57 +275,48 @@
             <path d="M2 7l4 4 6-6" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <span class="item-name">${item.name}</span>
-        ${item.qty ? `<span class="item-qty">${item.qty}</span>` : ''}
+        <span class="item-name">${escapeHtml(item.name)}</span>
         <button class="btn-delete" onclick="event.stopPropagation(); deleteItem(${item.id})">×</button>
       </div>
     `).join('');
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function addItem() {
     const input = document.getElementById('itemInput');
     const val = input.value.trim();
     if (!val) return;
-    items.push({ id: Date.now(), name: val, checked: false, qty: '' });
+    items.push({ id: Date.now(), name: val, checked: false });
     input.value = '';
-    save(); render();
+    save();
+    render();
     input.focus();
   }
 
   function toggleItem(id) {
     items = items.map(i => i.id === id ? { ...i, checked: !i.checked } : i);
-    save(); render();
+    save();
+    render();
   }
 
   function deleteItem(id) {
     items = items.filter(i => i.id !== id);
-    save(); render();
+    save();
+    render();
   }
 
   function clearChecked() {
-    items = items.filter(i => !i.checked);
-    save(); render();
+    if (items.filter(i => i.checked).length === 0) return;
+    if (confirm('Remove all checked items?')) {
+      items = items.filter(i => !i.checked);
+      save();
+      render();
+    }
   }
 
-  function openQty(id) {
-    const item = items.find(i => i.id === id);
-    if (!item) return;
-    editId = id;
-    document.getElementById('modalItemName').textContent = item.name;
-    document.getElementById('qtyInput').value = item.qty || '';
-    document.getElementById('qtyModal').classList.add('open');
-    setTimeout(() => document.getElementById('qtyInput').focus(), 100);
-  }
-
-  function closeModal() { document.getElementById('qtyModal').classList.remove('open'); }
-
-  function saveQty() {
-    const qty = document.getElementById('qtyInput').value.trim();
-    items = items.map(i => i.id === editId ? { ...i, qty } : i);
-    save(); render(); closeModal();
-  }
-
-  // Enter key to add
   document.getElementById('itemInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') addItem();
   });
